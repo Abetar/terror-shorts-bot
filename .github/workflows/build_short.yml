@@ -1,0 +1,49 @@
+name: Build Terror Short
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 */2 * *"  # cada 2 días a las 03:00 UTC
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      OPENAI_TEXT_MODEL: gpt-4o-mini
+      OPENAI_TTS_MODEL: gpt-4o-mini-tts
+      OPENAI_TTS_VOICE: alloy
+      DURATION: "72"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps + ffmpeg
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Generate story + TTS + SRT + Render
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          python scripts/generate_story.py
+          python scripts/tts_openai.py
+          python scripts/make_srt.py
+          bash scripts/render.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: terror-short
+          path: |
+            story.json
+            voice.mp3
+            subs.srt
+            final.mp4
