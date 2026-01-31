@@ -13,6 +13,7 @@ jobs:
       OPENAI_TTS_MODEL: gpt-4o-mini-tts
       OPENAI_TTS_VOICE: alloy
       DURATION: "72"
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,28 +30,61 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg
 
-      - name: Generate story + TTS + SRT + Render
+      - name: Generate story + TTS + SRT + Render (DEBUG)
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set -e
+
+          echo "========== DEBUG START =========="
+          echo "PWD:"
+          pwd
+
+          echo "ROOT CONTENTS (before):"
+          ls -la
+
           mkdir -p out
 
+          echo "========== generate_story.py =========="
           python scripts/generate_story.py
-          python scripts/tts_openai.py
-          python scripts/make_srt.py
-          bash scripts/render.sh
+          echo "ROOT CONTENTS (after story):"
+          ls -la
+          echo "FIND story.json:"
+          find . -maxdepth 4 -type f -name "story.json" -print
 
-          # Mueve outputs a out/ (por si se generaron en raíz)
+          echo "========== tts_openai.py =========="
+          python scripts/tts_openai.py
+          echo "ROOT CONTENTS (after tts):"
+          ls -la
+          echo "FIND voice.mp3:"
+          find . -maxdepth 4 -type f -name "voice.mp3" -print
+
+          echo "========== make_srt.py =========="
+          python scripts/make_srt.py
+          echo "ROOT CONTENTS (after srt):"
+          ls -la
+          echo "FIND subs.srt:"
+          find . -maxdepth 4 -type f -name "subs.srt" -print
+
+          echo "========== render.sh =========="
+          bash scripts/render.sh
+          echo "ROOT CONTENTS (after render):"
+          ls -la
+          echo "FIND final.mp4:"
+          find . -maxdepth 4 -type f -name "final.mp4" -print
+
+          echo "========== move outputs to out/ =========="
           [ -f story.json ] && mv story.json out/ || true
           [ -f voice.mp3 ] && mv voice.mp3 out/ || true
           [ -f subs.srt ] && mv subs.srt out/ || true
           [ -f final.mp4 ] && mv final.mp4 out/ || true
 
-          echo "== OUT CONTENTS =="
+          echo "OUT CONTENTS:"
           ls -la out || true
 
-          # Falla si no existe el resultado final
+          echo "========== DEBUG END =========="
+
+          # Fuerza fallo si no existe el resultado final
           test -f out/final.mp4
 
       - name: Upload artifact
