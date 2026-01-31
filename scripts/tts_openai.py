@@ -15,11 +15,22 @@ def main():
     with open("story.json", "r", encoding="utf-8") as f:
         story = json.load(f)
 
-    text = " ".join([s.strip() for s in story.get("segments", []) if isinstance(s, str) and s.strip()])
-    if not text:
+    segments = [s.strip() for s in story.get("segments", []) if isinstance(s, str) and s.strip()]
+    if not segments:
         raise ValueError("No text found in story.json segments.")
 
-    # NOTE: SDK expects response_format, not format
+    # Pausas naturales: separa frases con elipsis (mejor que repetir " ... " textual)
+    body = "…\n".join(segments)
+
+    # “Dirección” breve para la voz (ayuda a bajar lo robótico)
+    direction = (
+        "Lee esto en voz baja, con tensión contenida. "
+        "Pausas cortas después de frases importantes. "
+        "No exageres, suena real.\n\n"
+    )
+
+    text = direction + body
+
     audio = client.audio.speech.create(
         model=TTS_MODEL,
         voice=VOICE,
