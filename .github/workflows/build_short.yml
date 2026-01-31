@@ -8,6 +8,9 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
     env:
       OPENAI_TEXT_MODEL: gpt-4o-mini
       OPENAI_TTS_MODEL: gpt-4o-mini-tts
@@ -42,6 +45,16 @@ jobs:
           echo "ROOT CONTENTS (before):" && ls -la
 
           mkdir -p out
+
+          echo "OPENAI_API_KEY length: ${#OPENAI_API_KEY}"
+          echo "PEXELS_API_KEY length: ${#PEXELS_API_KEY}"
+          test ${#OPENAI_API_KEY} -gt 20
+          test ${#PEXELS_API_KEY} -gt 20
+
+          case "$OPENAI_API_KEY" in
+            sk-*|sk-proj-*) echo "OpenAI key looks OK" ;;
+            *) echo "ERROR: OPENAI_API_KEY does not look like an OpenAI key (sk- / sk-proj-)"; exit 1 ;;
+          esac
 
           echo "========== generate_story.py =========="
           python scripts/generate_story.py
