@@ -33,17 +33,28 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
+          set -e
+          mkdir -p out
+
           python scripts/generate_story.py
           python scripts/tts_openai.py
           python scripts/make_srt.py
           bash scripts/render.sh
 
+          # Mueve outputs a out/ (por si se generaron en raíz)
+          [ -f story.json ] && mv story.json out/ || true
+          [ -f voice.mp3 ] && mv voice.mp3 out/ || true
+          [ -f subs.srt ] && mv subs.srt out/ || true
+          [ -f final.mp4 ] && mv final.mp4 out/ || true
+
+          echo "== OUT CONTENTS =="
+          ls -la out || true
+
+          # Falla si no existe el resultado final
+          test -f out/final.mp4
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: terror-short
-          path: |
-            story.json
-            voice.mp3
-            subs.srt
-            final.mp4
+          path: out/
