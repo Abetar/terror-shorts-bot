@@ -19,11 +19,12 @@ def main():
     if not text:
         raise ValueError("No text found in story.json segments.")
 
+    # NOTE: SDK expects response_format, not format
     audio = client.audio.speech.create(
         model=TTS_MODEL,
         voice=VOICE,
         input=text,
-        format="mp3",
+        response_format="mp3",
     )
 
     with open("voice.mp3", "wb") as f:
