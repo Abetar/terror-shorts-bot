@@ -11,11 +11,11 @@ jobs:
     permissions:
       contents: read
       actions: write
+
     env:
       OPENAI_TEXT_MODEL: gpt-4o-mini
       OPENAI_TTS_MODEL: gpt-4o-mini-tts
       OPENAI_TTS_VOICE: alloy
-      DURATION: "72"
 
     steps:
       - name: Checkout
@@ -53,7 +53,7 @@ jobs:
 
           case "$OPENAI_API_KEY" in
             sk-*|sk-proj-*) echo "OpenAI key looks OK" ;;
-            *) echo "ERROR: OPENAI_API_KEY does not look like an OpenAI key (sk- / sk-proj-)"; exit 1 ;;
+            *) echo "ERROR: OPENAI_API_KEY does not look like an OpenAI key"; exit 1 ;;
           esac
 
           echo "========== generate_story.py =========="
@@ -71,6 +71,11 @@ jobs:
           echo "========== make_srt.py =========="
           python scripts/make_srt.py
           echo "FIND subs.srt:" && find . -maxdepth 4 -type f -name "subs.srt" -print
+
+          echo "========== detect audio duration =========="
+          export DURATION=$(ffprobe -v error -show_entries format=duration \
+            -of default=nk=1:nw=1 voice.mp3 | awk '{print int($1+0.5)}')
+          echo "Detected DURATION=${DURATION}s"
 
           echo "========== render.sh =========="
           bash scripts/render.sh
