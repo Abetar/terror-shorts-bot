@@ -2,10 +2,10 @@ import os
 import re
 from openai import OpenAI
 
-MAX_CHARS = 14      # por línea (duro)
+MAX_CHARS = 14          # por línea (duro)
 MAX_LINES = 2
-MIN_BLOCK_SEC = 0.55  # no tan rápido
-MAX_BLOCK_SEC = 1.8  # no tan lento
+MIN_BLOCK_SEC = 0.55    # no tan rápido
+MAX_BLOCK_SEC = 1.80    # no tan lento
 
 def sec_to_ts(sec: float) -> str:
     sec = max(0.0, float(sec))
@@ -18,40 +18,32 @@ def sec_to_ts(sec: float) -> str:
 def clean_text(t: str) -> str:
     t = (t or "").strip()
     t = re.sub(r"\s+", " ", t)
-    # limpia comillas raras
     t = t.replace("“", '"').replace("”", '"').replace("’", "'")
     return t
 
-def split_into_chunks(text: str, max_chars: int) -> list[str]:
+def break_long_words(text: str, max_len: int) -> str:
     """
-    Parte texto en chunks cortos tipo TikTok.
-    Regla: chunk <= max_chars*MAX_LINES aprox.
+    Si una palabra sola es más larga que max_len, la partimos con guion.
     """
-    words = text.split()
-    if not words:
-        return []
-
-    max_len = max_chars * MAX_LINES
-    chunks = []
-    cur = ""
-
-    for w in words:
-        add = (cur + " " + w).strip()
-        if len(add) <= max_len:
-            cur = add
+    out = []
+    for w in text.split():
+        if len(w) <= max_len:
+            out.append(w)
         else:
-            if cur:
-                chunks.append(cur)
-            cur = w
-
-    if cur:
-        chunks.append(cur)
-
-    return chunks
+            # cortar en piezas de max_len-1 + "-"
+            i = 0
+            while i < len(w):
+                part = w[i:i + (max_len - 1)]
+                i += (max_len - 1)
+                if i < len(w):
+                    out.append(part + "-")
+                else:
+                    out.append(part)
+    return " ".join(out)
 
 def wrap_lines(chunk: str, max_chars: int) -> str:
     """
-    Convierte chunk en 1–2 líneas, cada una <= max_chars.
+    1–2 líneas, cada una <= max_chars.
     """
     words = chunk.split()
     if not words:
@@ -68,13 +60,42 @@ def wrap_lines(chunk: str, max_chars: int) -> str:
             if cur:
                 lines.append(cur)
             cur = w
-            if len(lines) == MAX_LINES - 1:
+            if len(lines) >= MAX_LINES - 1:
                 break
 
     if cur and len(lines) < MAX_LINES:
         lines.append(cur)
 
     return "\n".join(lines[:MAX_LINES]).strip()
+
+def split_into_chunks(text: str, max_chars: int) -> list[str]:
+    """
+    Chunking pensado para que después wrap_lines NO explote.
+    En vez de max_chars*MAX_LINES, usamos un límite un poco menor
+    para forzar 1–2 líneas cortas.
+    """
+    words = text.split()
+    if not words:
+        return []
+
+    # límite por bloque (2 líneas pero conservador)
+    max_len = (max_chars * MAX_LINES) - 2  # margen extra
+    chunks = []
+    cur = ""
+
+    for w in words:
+        add = (cur + " " + w).strip()
+        if len(add) <= max_len:
+            cur = add
+        else:
+            if cur:
+                chunks.append(cur)
+            cur = w
+
+    if cur:
+        chunks.append(cur)
+
+    return chunks
 
 def seg_get(seg, key: str, default=None):
     if hasattr(seg, key):
@@ -119,28 +140,44 @@ def main():
         if not text or end <= start:
             continue
 
+        # rompe palabras largas ANTES de chunking
+        text = break_long_words(text, MAX_CHARS)
+
         dur = end - start
         chunks = split_into_chunks(text, MAX_CHARS)
+        if not chunks:
+            continue
 
-        # reparte tiempo por longitud
+        # reparto por longitud (pero luego normalizamos para no pasarnos de end)
         lengths = [max(1, len(c)) for c in chunks]
         total = sum(lengths)
 
-        t = start
-        for c, L in zip(chunks, lengths):
-            portion = dur * (L / total)
-            portion = clamp(portion, MIN_BLOCK_SEC, MAX_BLOCK_SEC)
+        # genera porciones clamp
+        portions = []
+        for L in lengths:
+            p = dur * (L / total)
+            p = clamp(p, MIN_BLOCK_SEC, MAX_BLOCK_SEC)
+            portions.append(p)
 
-            t2 = min(end, t + portion)
+        # normaliza porciones para que sumen <= dur (si clamp infló)
+        sum_p = sum(portions)
+        if sum_p > dur and sum_p > 0:
+            scale = dur / sum_p
+            portions = [p * scale for p in portions]
+
+        t = start
+        for c, p in zip(chunks, portions):
+            t2 = min(end, t + p)
             wrapped = wrap_lines(c, MAX_CHARS)
+
             if wrapped:
                 blocks.append(
                     f"{idx}\n{sec_to_ts(t)} --> {sec_to_ts(t2)}\n{wrapped}\n"
                 )
                 idx += 1
-            t = t2
 
-            if t >= end - 0.05:
+            t = t2
+            if t >= end - 0.03:
                 break
 
     if idx == 1:
