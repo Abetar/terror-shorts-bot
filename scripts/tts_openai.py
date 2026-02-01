@@ -19,17 +19,13 @@ def main():
     if not segments:
         raise ValueError("No text found in story.json segments.")
 
-    # Pausas naturales: separa frases con elipsis (mejor que repetir " ... " textual)
+    # Pausas naturales SIN decir instrucciones:
+    # - usa salto de línea para pausas
+    # - usa elipsis unicode para una pausa leve
     body = "…\n".join(segments)
 
-    # “Dirección” breve para la voz (ayuda a bajar lo robótico)
-    direction = (
-        "Lee esto en voz baja, con tensión contenida. "
-        "Pausas cortas después de frases importantes. "
-        "No exageres, suena real.\n\n"
-    )
-
-    text = direction + body
+    # IMPORTANTE: NO agregues instrucciones como texto, porque el TTS las lee.
+    text = body
 
     audio = client.audio.speech.create(
         model=TTS_MODEL,
