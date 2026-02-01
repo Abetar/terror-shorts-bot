@@ -10,20 +10,16 @@ def sec_to_ts(sec: float) -> str:
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 def clamp_text(t: str) -> str:
-    t = " ".join((t or "").strip().split())
-    return t
+    return " ".join((t or "").strip().split())
 
-def wrap_two_lines(text: str, max_chars: int = 22) -> str:
-    """
-    Rompe en 1-2 líneas para que NO tape pantalla.
-    """
+def wrap_two_lines(text: str, max_chars: int = 24) -> str:
     words = text.split()
     if not words:
         return ""
     lines = []
     cur = ""
     for w in words:
-        if len(cur) + len(w) + 1 <= max_chars:
+        if len(cur) + len(w) + (1 if cur else 0) <= max_chars:
             cur = (cur + " " + w).strip()
         else:
             lines.append(cur)
@@ -33,6 +29,16 @@ def wrap_two_lines(text: str, max_chars: int = 22) -> str:
     if cur and len(lines) < 2:
         lines.append(cur)
     return "\n".join(lines[:2]).strip()
+
+def seg_get(seg, key: str, default=None):
+    """
+    Soporta seg como objeto (sdk) o dict (json).
+    """
+    if hasattr(seg, key):
+        return getattr(seg, key)
+    if isinstance(seg, dict):
+        return seg.get(key, default)
+    return default
 
 def main():
     api_key = os.environ.get("OPENAI_API_KEY")
@@ -44,7 +50,6 @@ def main():
 
     client = OpenAI(api_key=api_key)
 
-    # Whisper para timestamps reales
     with open("voice.mp3", "rb") as f:
         tr = client.audio.transcriptions.create(
             model="whisper-1",
@@ -53,17 +58,19 @@ def main():
             language="es",
         )
 
-    segments = getattr(tr, "segments", None) or tr.get("segments") or []
+    segments = getattr(tr, "segments", None) or (tr.get("segments") if isinstance(tr, dict) else None) or []
     if not segments:
         raise RuntimeError("No transcription segments returned by whisper.")
 
     blocks = []
     idx = 1
+
     for seg in segments:
-        start = float(seg["start"])
-        end = float(seg["end"])
-        text = clamp_text(seg.get("text", ""))
-        if not text:
+        start = float(seg_get(seg, "start", 0.0))
+        end = float(seg_get(seg, "end", 0.0))
+        text = clamp_text(seg_get(seg, "text", "") or "")
+
+        if not text or end <= start:
             continue
 
         text = wrap_two_lines(text, max_chars=24)
