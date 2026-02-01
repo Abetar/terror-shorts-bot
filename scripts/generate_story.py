@@ -77,13 +77,12 @@ def main():
 
     client = OpenAI(api_key=api_key)
 
+    # FIX: tu SDK no soporta response_format en responses.create()
     resp = client.responses.create(
         model=MODEL,
         input=PROMPT,
         temperature=0.85,
         max_output_tokens=650,
-        # Fuerza JSON (si el modelo lo soporta, esto reduce basura fuera del objeto)
-        response_format={"type": "json_object"},
     )
 
     out_text = ""
@@ -93,7 +92,9 @@ def main():
                 if c.type == "output_text":
                     out_text += c.text
 
-    # Si response_format funcionó, out_text ya es JSON. Igual dejamos fallback.
+    out_text = out_text.strip()
+
+    # Parse robusto: primero intenta JSON directo, si falla extrae el primer objeto { ... }
     try:
         data = json.loads(out_text)
     except Exception:
@@ -131,7 +132,6 @@ def main():
         if not isinstance(b.get("duration_sec"), (int, float)):
             raise ValueError("Invalid JSON: visual_plan.duration_sec missing/invalid.")
 
-        # Extra: evita keywords prohibidas (por si acaso)
         banned_kw = {"sound", "whisper", "audio", "voice", "zoom", "slow"}
         for kw in kws:
             if isinstance(kw, str) and kw.strip().lower() in banned_kw:
