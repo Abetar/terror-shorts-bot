@@ -3,20 +3,40 @@ set -euo pipefail
 
 OUT="${OUT:-final.mp4}"
 
-# Si no defines DURATION, la calculamos desde voice.mp3 (recomendado)
-if [[ -z "${DURATION:-}" ]]; then
-  DURATION="$(ffprobe -v error -show_entries format=duration -of default=nk=1:nw=1 voice.mp3 | awk '{print int($1+0.5)}')"
+# Duración REAL (float) del audio: el audio manda
+AUDIO_DUR="$(ffprobe -v error -show_entries format=duration -of default=nk=1:nw=1 voice.mp3)"
+# Por si ffprobe devuelve vacío
+if [[ -z "${AUDIO_DUR}" ]]; then
+  echo "[render] ERROR: Could not read voice.mp3 duration via ffprobe"
+  exit 1
 fi
 
-# Divide duración en 3 partes (para clip1/2/3)
-D1="${D1:-$((DURATION/3))}"
-D2="${D2:-$((DURATION/3))}"
-D3="${D3:-$((DURATION - D1 - D2))}"
+# Si DURATION no está definida, usamos la del audio (float)
+DURATION="${DURATION:-$AUDIO_DUR}"
+
+# Divide duración en 3 partes (float) para clip1/2/3
+# (evita enteros para que no se recorte raro)
+D1="${D1:-$(python - <<PY
+d=float("${DURATION}")
+print(d/3.0)
+PY
+)}"
+D2="${D2:-$(python - <<PY
+d=float("${DURATION}")
+print(d/3.0)
+PY
+)}"
+D3="${D3:-$(python - <<PY
+d=float("${DURATION}")
+d1=d/3.0
+d2=d/3.0
+print(max(0.1, d - d1 - d2))
+PY
+)}"
 
 # Subtítulos: lower-third con caja semitransparente (NO tapa todo)
-SUB_STYLE="FontName=Arial,FontSize=12,PrimaryColour=&H00FFFFFF&,OutlineColour=&H00000000&,BorderStyle=3,Outline=0,Shadow=0,BackColour=&H33000000&,Alignment=2,MarginV=70,MarginL=220,MarginR=220,WrapStyle=2"
-
-
+# OJO: FontSize=12 es muy chico para 1080x1920; si lo ves chico súbelo a 34–44.
+SUB_STYLE="FontName=Arial,FontSize=38,PrimaryColour=&H00FFFFFF&,OutlineColour=&H00000000&,BorderStyle=3,Outline=0,Shadow=0,BackColour=&H33000000&,Alignment=2,MarginV=170,MarginL=140,MarginR=140,WrapStyle=2"
 
 B1="out/broll/clip1.mp4"
 B2="out/broll/clip2.mp4"
@@ -30,7 +50,9 @@ fi
 
 if [[ "$use_broll" == "true" ]]; then
   ffmpeg -y \
-    -i "$B1" -i "$B2" -i "$B3" \
+    -stream_loop -1 -i "$B1" \
+    -stream_loop -1 -i "$B2" \
+    -stream_loop -1 -i "$B3" \
     -i voice.mp3 \
     -f lavfi -i "anoisesrc=color=white:amplitude=0.02:d=${DURATION}" \
     -filter_complex "\
@@ -44,12 +66,11 @@ if [[ "$use_broll" == "true" ]]; then
       [voice][amb]amix=inputs=2:duration=first[a] \
     " \
     -map "[v]" -map "[a]" \
+    -t "${AUDIO_DUR}" \
     -c:v libx264 -pix_fmt yuv420p -r 30 \
     -c:a aac -b:a 160k \
-    -shortest \
     "${OUT}"
 else
-  # fallback: fondo negro si no hay clips
   ffmpeg -y \
     -f lavfi -i "color=c=black:s=1080x1920:d=${DURATION}" \
     -i voice.mp3 \
@@ -62,10 +83,10 @@ else
       [voice][amb]amix=inputs=2:duration=first[a] \
     " \
     -map "[v]" -map "[a]" \
+    -t "${AUDIO_DUR}" \
     -c:v libx264 -pix_fmt yuv420p -r 30 \
     -c:a aac -b:a 160k \
-    -shortest \
     "${OUT}"
 fi
 
-echo "OK: ${OUT} generated (DURATION=${DURATION}s, D1=${D1}, D2=${D2}, D3=${D3})"
+echo "OK: ${OUT} generated (AUDIO_DUR=${AUDIO_DUR}s, DURATION=${DURATION}s, D1=${D1}, D2=${D2}, D3=${D3})"
