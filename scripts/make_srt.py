@@ -2,10 +2,10 @@ import os
 import re
 from openai import OpenAI
 
-MAX_CHARS = 18      # por línea (duro)
+MAX_CHARS = 14      # por línea (duro)
 MAX_LINES = 2
 MIN_BLOCK_SEC = 0.55  # no tan rápido
-MAX_BLOCK_SEC = 2.20  # no tan lento
+MAX_BLOCK_SEC = 1.8  # no tan lento
 
 def sec_to_ts(sec: float) -> str:
     sec = max(0.0, float(sec))
