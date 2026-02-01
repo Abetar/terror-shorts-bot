@@ -5,6 +5,9 @@ from openai import OpenAI
 
 MODEL = os.getenv("OPENAI_TEXT_MODEL", "gpt-4o-mini")
 
+ATTEMPTS = int(os.getenv("STORY_ATTEMPTS", "3"))
+TARGET_N = 9  # fijo para evitar el error 8–10
+
 PROMPT = """Eres un guionista profesional de terror psicológico para TikTok/Shorts.
 
 TAREA:
@@ -16,7 +19,7 @@ Que el espectador entienda exactamente qué pasó, sin incoherencias.
 REGLAS OBLIGATORIAS (NO NEGOCIABLES):
 - Devuelve SOLO el JSON final. NO incluyas explicaciones, notas, instrucciones, ni texto fuera del JSON.
 - NO incluyas instrucciones de narración en el texto (ej: "lee esto...", "voz baja...", "pausas...").
-- 8 a 10 frases en "segments".
+- EXACTAMENTE 9 frases en "segments".
 - Máximo 12 palabras por frase.
 - Cada frase DEBE conectar causalmente con la anterior (sin saltos ni cambios de escena).
 - Prohibido: "dicen", "rumores", "se dice", "este video...", "lee esto", "en voz", "narración".
@@ -57,6 +60,8 @@ META_BANNED = [
     "narración", "instrucción", "prompt", "este video"
 ]
 
+BANNED_KW = {"sound", "whisper", "audio", "voice", "zoom", "slow"}
+
 def extract_json(text: str) -> dict:
     m = re.search(r"\{.*\}", text, re.S)
     if not m:
@@ -70,36 +75,44 @@ def contains_meta(s: str) -> bool:
     low = s.lower()
     return any(b in low for b in META_BANNED)
 
-def main():
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("OPENAI_API_KEY is missing.")
+def normalize_segments(segments: list[str]) -> list[str]:
+    """
+    Fallback barato: si el modelo devuelve 8–10 mal, forzamos 9.
+    - Si hay >9: recorta al inicio y final dejando giro (última frase).
+    - Si hay <9: rellena duplicando la penúltima con variación mínima (sin meta).
+    """
+    segs = [s.strip() for s in segments if isinstance(s, str) and s.strip()]
 
-    client = OpenAI(api_key=api_key)
+    if len(segs) == TARGET_N:
+        return segs
 
-    # FIX: tu SDK no soporta response_format en responses.create()
-    resp = client.responses.create(
-        model=MODEL,
-        input=PROMPT,
-        temperature=0.85,
-        max_output_tokens=650,
-    )
+    if len(segs) > TARGET_N:
+        # conserva primera(s), medio y final
+        # estrategia simple: toma primeras 7 y la última 2
+        head = segs[:7]
+        tail = segs[-2:]
+        segs = (head + tail)[:TARGET_N]
+        return segs
 
-    out_text = ""
-    for item in resp.output:
-        if item.type == "message":
-            for c in item.content:
-                if c.type == "output_text":
-                    out_text += c.text
+    # len < 9: relleno
+    while len(segs) < TARGET_N:
+        base = segs[-1] if segs else "Apagué la luz y escuché pasos detrás de mí."
+        filler = base
 
-    out_text = out_text.strip()
+        # evita repetir exacto: cambia un detalle leve
+        filler = filler.replace("Apagué", "Apagué").replace("escuché", "sentí")
+        if filler == base:
+            filler = base + " Y no era mi respiración."
 
-    # Parse robusto: primero intenta JSON directo, si falla extrae el primer objeto { ... }
-    try:
-        data = json.loads(out_text)
-    except Exception:
-        data = extract_json(out_text)
+        # Si se pasó de 12 palabras, recorta
+        words = filler.split()
+        if len(words) > 12:
+            filler = " ".join(words[:12])
 
+        segs.insert(-1, filler)  # mete antes del final para no romper el giro
+    return segs[:TARGET_N]
+
+def validate_story(data: dict) -> None:
     title = data.get("title")
     segments = data.get("segments")
     visual_plan = data.get("visual_plan")
@@ -107,8 +120,8 @@ def main():
     if not isinstance(title, str) or not title.strip():
         raise ValueError("Invalid JSON: missing title.")
 
-    if not isinstance(segments, list) or not (8 <= len(segments) <= 10):
-        raise ValueError("Invalid JSON: segments must be a list of 8–10 strings.")
+    if not isinstance(segments, list) or len(segments) != TARGET_N:
+        raise ValueError("Invalid JSON: segments must be a list of exactly 9 strings.")
 
     for s in segments:
         if not isinstance(s, str) or not s.strip():
@@ -132,10 +145,63 @@ def main():
         if not isinstance(b.get("duration_sec"), (int, float)):
             raise ValueError("Invalid JSON: visual_plan.duration_sec missing/invalid.")
 
-        banned_kw = {"sound", "whisper", "audio", "voice", "zoom", "slow"}
         for kw in kws:
-            if isinstance(kw, str) and kw.strip().lower() in banned_kw:
+            if isinstance(kw, str) and kw.strip().lower() in BANNED_KW:
                 raise ValueError(f"Invalid JSON: banned keyword in visual_plan.keywords: {kw}")
+
+def call_model(client: OpenAI, prompt: str) -> str:
+    resp = client.responses.create(
+        model=MODEL,
+        input=prompt,
+        temperature=0.85,
+        max_output_tokens=650,
+    )
+    out_text = ""
+    for item in resp.output:
+        if item.type == "message":
+            for c in item.content:
+                if c.type == "output_text":
+                    out_text += c.text
+    return out_text.strip()
+
+def main():
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY is missing.")
+
+    client = OpenAI(api_key=api_key)
+
+    last_err = None
+    data = None
+
+    for attempt in range(1, ATTEMPTS + 1):
+        try:
+            prompt = PROMPT
+
+            # En intentos >1, mete un refuerzo ultra explícito
+            if attempt > 1:
+                prompt = PROMPT + f"\n\nRECORDATORIO FINAL: segments DEBE tener EXACTAMENTE {TARGET_N} frases.\n"
+
+            out_text = call_model(client, prompt)
+
+            try:
+                data = json.loads(out_text)
+            except Exception:
+                data = extract_json(out_text)
+
+            # Si segmentos vienen mal, intenta normalizar antes de fallar
+            if isinstance(data.get("segments"), list):
+                data["segments"] = normalize_segments(data["segments"])
+
+            validate_story(data)
+            break
+
+        except Exception as e:
+            last_err = e
+            data = None
+
+    if data is None:
+        raise RuntimeError(f"Failed to generate valid story after {ATTEMPTS} attempts. Last error: {last_err}")
 
     with open("story.json", "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
