@@ -14,7 +14,7 @@ D2="${D2:-$((DURATION/3))}"
 D3="${D3:-$((DURATION - D1 - D2))}"
 
 # Subtítulos: lower-third con caja semitransparente (NO tapa todo)
-SUB_STYLE="FontName=Arial,FontSize=26,PrimaryColour=&H00FFFFFF&,OutlineColour=&H00000000&,BorderStyle=3,Outline=0,Shadow=0,BackColour=&H33000000&,Alignment=2,MarginV=70,MarginL=220,MarginR=220,WrapStyle=2"
+SUB_STYLE="FontName=Arial,FontSize=12,PrimaryColour=&H00FFFFFF&,OutlineColour=&H00000000&,BorderStyle=3,Outline=0,Shadow=0,BackColour=&H33000000&,Alignment=2,MarginV=70,MarginL=220,MarginR=220,WrapStyle=2"
 
 
 
