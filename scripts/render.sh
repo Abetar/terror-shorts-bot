@@ -36,7 +36,7 @@ PY
 
 # Subtítulos: lower-third con caja semitransparente (NO tapa todo)
 # OJO: FontSize=12 es muy chico para 1080x1920; si lo ves chico súbelo a 34–44.
-SUB_STYLE="FontName=Arial,FontSize=38,PrimaryColour=&H00FFFFFF&,OutlineColour=&H00000000&,BorderStyle=3,Outline=0,Shadow=0,BackColour=&H33000000&,Alignment=2,MarginV=170,MarginL=140,MarginR=140,WrapStyle=2"
+SUB_STYLE="FontName=Arial,FontSize=12,PrimaryColour=&H00FFFFFF&,OutlineColour=&H00000000&,BorderStyle=3,Outline=0,Shadow=0,BackColour=&H33000000&,Alignment=2,MarginV=170,MarginL=140,MarginR=140,WrapStyle=2"
 
 B1="out/broll/clip1.mp4"
 B2="out/broll/clip2.mp4"
