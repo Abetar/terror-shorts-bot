@@ -17,13 +17,12 @@ jobs:
       OPENAI_TTS_MODEL: gpt-4o-mini-tts
       OPENAI_TTS_VOICE: alloy
 
-      # ===== NUEVO (TTS control sin tocar scripts) =====
-      # 0 = final silencioso (NO narra CTA)
-      # 1 = agrega story.cta al final del audio
-      INCLUDE_CTA_AUDIO: "1"
+      # ===== NEW: TTS tuning (no instructions spoken) =====
+      INCLUDE_CTA_AUDIO: "0"   # 0 = final silencioso | 1 = CTA narrado al final
+      TTS_LINE_BREAKS: "2"     # 1 = menos pausa | 2 = recomendado
 
-      # 1 = pausas más cortas, 2 = pausas más naturales (recomendado)
-      TTS_LINE_BREAKS: "2"
+      # ===== Optional: story reliability =====
+      STORY_ATTEMPTS: "3"
 
     steps:
       - name: Checkout
@@ -64,9 +63,10 @@ jobs:
             *) echo "ERROR: OPENAI_API_KEY does not look like an OpenAI key"; exit 1 ;;
           esac
 
-          echo "TTS SETTINGS:"
+          echo "========== ENV (TTS/Story) =========="
           echo "INCLUDE_CTA_AUDIO=${INCLUDE_CTA_AUDIO}"
           echo "TTS_LINE_BREAKS=${TTS_LINE_BREAKS}"
+          echo "STORY_ATTEMPTS=${STORY_ATTEMPTS}"
 
           echo "========== generate_story.py =========="
           python scripts/generate_story.py
